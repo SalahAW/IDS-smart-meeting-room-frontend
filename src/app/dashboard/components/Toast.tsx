@@ -60,7 +60,7 @@ const Toast = ({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) => 
             </button>
             {/* Progress Bar */}
             <motion.div
-                className="absolute bottom-0 left-0 h-1 bg-green-500"
+                className="absolute bottom-0 left-0 h-1 bg-blue-500"
                 initial={{ width: '100%' }}
                 animate={{ width: '0%' }}
                 transition={{ duration: duration / 1000, ease: 'linear' }}

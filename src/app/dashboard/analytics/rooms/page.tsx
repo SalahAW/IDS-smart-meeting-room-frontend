@@ -1,77 +1,138 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { ArrowLeft } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { Clock, Users, Percent, Shield, Calendar, Hourglass } from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import api from '@/lib/api';
 
-// --- MOCK DATA ---
-const roomUtilizationData = [
-    { name: 'Orion', utilization: 85 }, { name: 'Pegasus', utilization: 72 },
-    { name: 'Andromeda', utilization: 68 }, { name: 'Cygnus', utilization: 55 },
-    { name: 'Draco', utilization: 40 }, { name: 'Lyra', utilization: 32 },
-];
-const peakHoursData = [
-    { hour: '9 AM', bookings: 25 }, { hour: '10 AM', bookings: 45 }, { hour: '11 AM', bookings: 50 },
-    { hour: '1 PM', bookings: 38 }, { hour: '2 PM', bookings: 60 }, { hour: '3 PM', bookings: 48 },
-];
-const roomTypeData = [ { name: 'Conference Room', value: 4 }, { name: 'Huddle Room', value: 2 } ];
-const COLORS = ['#0088FE', '#00C49F'];
+// --- Data Types (Unchanged) ---
+interface HourlyUsageDto {
+    Hour: string;
+    Meetings: number;
+}
+interface DailyUsageDto {
+    Day: string;
+    Meetings: number;
+}
+interface RoomAnalyticsDto {
+    overallUtilizationPercentage: number;
+    totalBookingHours: number;
+    averageMeetingDurationMinutes: number;
+    usageByHour: HourlyUsageDto[];
+    usageByDay: DailyUsageDto[];
+}
 
-const AnalyticsCard = ({ title, children }) => (
+// --- Reusable Components (Unchanged) ---
+const StatCard = ({ icon: Icon, title, value, unit, color }) => (
     <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-lg shadow-slate-200/60">
-        <h3 className="font-bold text-slate-800 mb-4">{title}</h3>
-        <div className="h-72">{children}</div>
+        <div className="flex items-center space-x-4">
+            <div className={`p-3 rounded-full ${color.bg}`}>
+                <Icon className={`h-6 w-6 ${color.text}`} />
+            </div>
+            <div>
+                <p className="text-sm text-slate-500">{title}</p>
+                <p className="text-2xl font-bold text-slate-800 mt-1">{value} <span className="text-lg font-medium text-slate-400">{unit}</span></p>
+            </div>
+        </div>
+    </div>
+);
+const AnalyticsSkeleton = () => (
+    <div className="animate-pulse">
+        <div className="h-8 w-1/2 bg-slate-200 rounded-md"></div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+            <div className="h-24 bg-slate-200 rounded-2xl"></div>
+            <div className="h-24 bg-slate-200 rounded-2xl"></div>
+            <div className="h-24 bg-slate-200 rounded-2xl"></div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            <div className="h-80 bg-slate-200 rounded-2xl"></div>
+            <div className="h-80 bg-slate-200 rounded-2xl"></div>
+        </div>
     </div>
 );
 
 const RoomAnalyticsPage = () => {
+    const { data: session, status } = useSession({ required: true });
+    const [data, setData] = useState<RoomAnalyticsDto | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchRoomAnalytics = async () => {
+            setIsLoading(true);
+            try {
+                // The api object from @/lib/api will automatically add the auth token
+                const response = await api.get<RoomAnalyticsDto>('/api/Analytics/Rooms');
+                setData(response.data);
+            } catch (err) {
+                console.error("Failed to fetch room analytics:", err);
+                setError("Could not load room analytics. Please try again.");
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        // MINIMAL CHANGE: Only fetch data when the session is authenticated.
+        if (status === 'authenticated') {
+            fetchRoomAnalytics();
+        }
+    }, [status]); // MINIMAL CHANGE: Add 'status' as a dependency.
+
+    if (status === 'loading' || isLoading) {
+        return <AnalyticsSkeleton />;
+    }
+
+    if (session?.user?.role !== 'admin') {
+        return ( <div className="flex flex-col items-center justify-center h-full text-center bg-white p-8 rounded-lg shadow-md"><Shield size={64} className="text-red-500 mb-4" /><h1 className="text-2xl font-bold text-slate-800">Access Denied</h1><p className="text-slate-600 mt-2">You do not have permission to view analytics.</p></div> );
+    }
+
+    if (error) {
+        return <div className="text-center py-20 text-red-600">{error}</div>;
+    }
+
     return (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <a href="/dashboard/analytics" className="flex items-center text-sm text-slate-500 hover:text-slate-800 mb-6 group">
-                <ArrowLeft size={16} className="mr-1 transform group-hover:-translate-x-1 transition-transform" />
-                Back to Analytics Overview
-            </a>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="space-y-8">
             <div>
                 <h2 className="text-3xl font-bold text-slate-900">Room Analytics</h2>
-                <p className="text-slate-500 mt-1">Detailed insights into meeting room utilization and trends.</p>
+                <p className="text-slate-500 mt-1">Insights into room usage and booking patterns over the last 30 days.</p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-                <AnalyticsCard title="Room Utilization Rate (%)">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={roomUtilizationData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} />
-                            <YAxis stroke="#94a3b8" fontSize={12} />
-                            <Tooltip contentStyle={{ backgroundColor: 'white', borderRadius: '0.75rem', borderColor: '#e2e8f0' }} />
-                            <Bar dataKey="utilization" fill="#8884d8" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </AnalyticsCard>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <StatCard icon={Percent} title="Overall Utilization" value={data?.overallUtilizationPercentage || 0} unit="%" color={{bg: 'bg-blue-100', text: 'text-blue-600'}} />
+                <StatCard icon={Hourglass} title="Total Booking Hours" value={data?.totalBookingHours || 0} unit="hours" color={{bg: 'bg-green-100', text: 'text-green-600'}} />
+                <StatCard icon={Clock} title="Avg. Meeting Duration" value={data?.averageMeetingDurationMinutes || 0} unit="mins" color={{bg: 'bg-yellow-100', text: 'text-yellow-600'}} />
+            </div>
 
-                <AnalyticsCard title="Peak Booking Hours">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={peakHoursData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                            <XAxis dataKey="hour" stroke="#94a3b8" fontSize={12} />
-                            <YAxis stroke="#94a3b8" fontSize={12} />
-                            <Tooltip contentStyle={{ backgroundColor: 'white', borderRadius: '0.75rem', borderColor: '#e2e8f0' }} />
-                            <Bar dataKey="bookings" fill="#82ca9d" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </AnalyticsCard>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-lg shadow-slate-200/60">
+                    <h3 className="font-bold text-slate-800 mb-4">Busiest Times of Day</h3>
+                    <div className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={data?.usageByHour || []} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                                <XAxis dataKey="Hour" stroke="#94a3b8" fontSize={12} />
+                                <YAxis stroke="#94a3b8" fontSize={12} allowDecimals={false} />
+                                <Tooltip contentStyle={{ backgroundColor: 'white', borderRadius: '0.75rem', borderColor: '#e2e8f0' }} />
+                                <Area type="monotone" dataKey="Meetings" stroke="#10b981" fill="#a7f3d0" strokeWidth={2} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
 
-                <AnalyticsCard title="Bookings by Room Type">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                            <Pie data={roomTypeData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} outerRadius={100} fill="#8884d8" dataKey="value">
-                                {roomTypeData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                ))}
-                            </Pie>
-                            <Tooltip contentStyle={{ backgroundColor: 'white', borderRadius: '0.75rem', borderColor: '#e2e8f0' }} />
-                        </PieChart>
-                    </ResponsiveContainer>
-                </AnalyticsCard>
+                <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-lg shadow-slate-200/60">
+                    <h3 className="font-bold text-slate-800 mb-4">Busiest Days of the Week</h3>
+                    <div className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={data?.usageByDay || []} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                                <XAxis dataKey="Day" stroke="#94a3b8" fontSize={12} />
+                                <YAxis stroke="#94a3b8" fontSize={12} allowDecimals={false} />
+                                <Tooltip cursor={{ fill: '#f1f5f9' }} contentStyle={{ backgroundColor: 'white', borderRadius: '0.75rem', borderColor: '#e2e8f0' }} />
+                                <Bar dataKey="Meetings" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             </div>
         </motion.div>
     );

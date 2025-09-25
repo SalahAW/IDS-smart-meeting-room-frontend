@@ -7,7 +7,7 @@ import { DefaultButton } from '@/app/dashboard/components/DefaultButton';
 import { useFormState, useFormStatus } from 'react-dom';
 import { createMeeting } from '@/actions';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useToast } from '@/app/dashboard/components/Toast';
 import api from '@/lib/api';
 import useOutsideClick from '@/app/dashboard/hooks/useOutsideClick';
@@ -106,16 +106,12 @@ const ScheduleMeetingPage = () => {
     const router = useRouter();
     const { addToast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
-    const searchParams = useSearchParams();
-    const roomIdFromQuery = searchParams.get('roomId');
 
     // State for form dropdowns
     const [formData, setFormData] = useState<MeetingFormData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     // State for the new attendee selector
     const [selectedAttendees, setSelectedAttendees] = useState<SelectListItem[]>([]);
-    const [selectedRoomId, setSelectedRoomId] = useState(roomIdFromQuery || '');
-
 
     useEffect(() => {
         const fetchFormData = async () => {
@@ -144,7 +140,6 @@ const ScheduleMeetingPage = () => {
     const handleReset = () => {
         formRef.current?.reset();
         setSelectedAttendees([]);
-        setSelectedRoomId(roomIdFromQuery || ''); // Reset room to query param or empty
         addToast("Form cleared.", 'info');
     };
 
@@ -199,7 +194,7 @@ const ScheduleMeetingPage = () => {
                         </div>
                         <div>
                             <label htmlFor="roomId" className="block text-sm font-medium text-slate-700">Room</label>
-                            <select name="roomId" id="roomId" className="mt-1 block w-full p-3 border border-slate-300 rounded-lg bg-white" value={selectedRoomId} onChange={(e) => setSelectedRoomId(e.target.value)} required>
+                            <select name="roomId" id="roomId" className="mt-1 block w-full p-3 border border-slate-300 rounded-lg bg-white" defaultValue="" required>
                                 <option value="" disabled>Select a room</option>
                                 {formData?.rooms.map(room => <option key={room.id} value={room.id}>{room.name}</option>)}
                             </select>

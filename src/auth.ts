@@ -1,6 +1,9 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 
+
+const SESSION_MAX_AGE_SECONDS = 60 * 60;
+
 // This interface should match the User object from your backend's login response
 interface BackendUser {
     id: number;
@@ -25,28 +28,20 @@ export const {
                 if (!credentials?.identifier || !credentials.password) {
                     return null;
                 }
-
                 try {
                     const res = await fetch(`${process.env.API_URL}/Users/Login`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            identifier: credentials.identifier,
-                            password: credentials.password,
+                            Identifier: credentials.identifier,
+                            Password: credentials.password,
                         }),
                     });
-
-                    if (!res.ok) {
-                        console.error("API Login Error:", res.statusText);
-                        return null;
-                    }
-
+                    if (!res.ok) { return null; }
                     const responseData = await res.json();
                     const backendUser: BackendUser = responseData.user;
                     const token: string = responseData.token;
-
                     if (backendUser && token) {
-                        // Return the necessary data to the JWT callback
                         return {
                             id: backendUser.id.toString(),
                             name: backendUser.name,
@@ -55,34 +50,60 @@ export const {
                             accessToken: token,
                         };
                     }
-
                     return null;
                 } catch (e) {
-                    if (e instanceof TypeError && e.message === 'Failed to fetch') {
+                    if (e.cause?.code === 'ECONNREFUSED') {
                         throw new Error('ConnectionFailed');
                     }
-                    console.error("Authorize Error:", e);
                     return null;
                 }
             },
         }),
     ],
     callbacks: {
-        async jwt({ token, user }) {
-            // This 'user' object comes from the 'authorize' function on initial sign-in.
+        async jwt({ token, user, trigger, session }) {
             if (user) {
+                token.loginTime = Math.floor(Date.now() / 1000);
                 token.id = user.id;
                 token.roleId = user.roleId;
                 token.accessToken = user.accessToken;
+                // 3. Use the same constant in the JWT callback.
+                token.maxAge = SESSION_MAX_AGE_SECONDS;
             }
+
+            // Handle session update trigger - fetch fresh user data from API
+            if (trigger === "update" && token.id && token.accessToken) {
+                try {
+                    const response = await fetch(`${process.env.API_URL}/Users/${token.id}`, {
+                        headers: {
+                            'Authorization': `Bearer ${token.accessToken}`,
+                            'Content-Type': 'application/json',
+                        },
+                    });
+
+                    if (response.ok) {
+                        const userData = await response.json();
+                        // Update the token with fresh data from your API
+                        token.name = userData.user.name;
+                        token.email = userData.user.email;
+                        token.roleId = userData.user.roleId;
+                        // Keep all existing timing properties unchanged
+                        // loginTime, maxAge, accessToken remain the same
+                    }
+                } catch (error) {
+                    console.error('Failed to refresh user data:', error);
+                    // Continue with existing token data if refresh fails
+                }
+            }
+
             return token;
         },
         async session({ session, token }) {
-            // We are adding the custom properties from the token to the session.
             if (session.user) {
                 session.user.id = token.id as string;
-
                 session.user.accessToken = token.accessToken as string;
+                session.user.loginTime = token.loginTime;
+                session.user.maxAge = token.maxAge;
 
                 switch (token.roleId) {
                     case 1:
@@ -91,21 +112,21 @@ export const {
                     case 2:
                         session.user.role = "employee";
                         break;
-                    case 3:
-                        session.user.role = "guest";
-                        break;
                     default:
                         session.user.role = "guest";
+                        break;
                 }
             }
             return session;
         },
     },
     pages: {
-        signIn: "/", // Your login page is at the root
+        signIn: "/",
     },
     session: {
         strategy: "jwt",
+        // 2. Use the constant in the session configuration.
+        maxAge: SESSION_MAX_AGE_SECONDS,
     },
     secret: process.env.AUTH_SECRET,
 });
